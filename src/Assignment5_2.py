@@ -5,10 +5,17 @@ Created on Mon Nov 12 20:26:22 2018
 
 @author: marina
 """
+"""
+This class implements Planar Calibration and RANSAC algorithms
+When running the application a menu pops up in the terminal and allows the user to choose between either method.
+"""
 import numpy as np
 import random
 import sys
 
+"""
+Main method. Executes the  function according to the user input.
+"""
 def main():
       global imgMod, imgOrg
       print("Author: Marina Torres \n")
@@ -25,7 +32,10 @@ def main():
               elif(inp=="r"):
                   ransac("features.txt","features0.txt","features1.txt","features2.txt")
       
-            
+
+""" 
+This function takes as input 4 text files and returns a numpy array with the data of each file.
+"""      
 def extractPoints(f, file0, file1, file2):
     
     objp = np.empty((0,3))
@@ -72,6 +82,11 @@ def extractPoints(f, file0, file1, file2):
     file2.close()
     return objp, imgpoints0, imgpoints1, imgpoints2
 
+"""
+This function takes as input an array of 3 dimensions.
+Concatenates a vector of '1' to the 3D np array to convert it to 3DH
+Returns an array formed by stacking the vector and the input array.
+"""
 def to3DH(objp):
     objp = np.array(objp)
     n,m = objp.shape
@@ -79,6 +94,13 @@ def to3DH(objp):
     objp2 = np.hstack((objp,X0))
     return objp2
     
+"""
+Implementation of planar calibration.
+This function takes four files as inputs, one contains the data corresponding to the object points, and the other three are
+data from the image points. The function calculates the homography matrixes between the object points and each of the image points.
+It extracts the intrinsic parameters from the vector computed with the homography estimations, as well as the extrinsic parameters 
+for each of the homography estimations and prints it in the terminal.
+"""
 def planarCalib(f, file0, file1, file2):
     
     objp, imgpoints0, imgpoints1, imgpoints2 = extractPoints(f,file0,file1,file2)
@@ -132,7 +154,12 @@ def planarCalib(f, file0, file1, file2):
     print ("MSE2: ",mse2)
     print ("\n")
    
-
+"""
+This function estimates the planar homography between the image plane and the object. The homography relates the transformation between two planes.
+It iterates through each element of the object points to convert from 2d to 2d homogeneous matrix and compute its transpose.
+Factorizes the complex matrix obtained from the image points and object points 2dh using singular value decoposition algorithm.
+Returns Vh, the nxn unitary matrix whose columns are the right-singular vectors of the matrix M.
+"""
 def homogEstim(imgpoints,objp):
     p2dh = []
     p2dhT = []
@@ -170,7 +197,9 @@ def homogEstim(imgpoints,objp):
     U,S,Vh = np.linalg.svd(matrix)
     return Vh[np.argmin(S),:].reshape(3,3)
     
-
+"""
+Auxiliary function to compute the array composed by the three Homography vectors
+"""
 def computeVector(H0,H1,H2):
     matrixV = []
     v0 = computeV(H0,0,1) 
@@ -183,6 +212,7 @@ def computeVector(H0,H1,H2):
 
     return matrixV
 
+
 def computeV(H,i,j):
     H = H.T
     V = np.array([H[i,0]*H[j,0], 
@@ -194,6 +224,10 @@ def computeV(H,i,j):
     
     return V
 
+"""
+Auxiliary function to calculate the intrinsic parameters of the vector received as input. 
+The input should be a vector composed by the three homography vectors from the three image points respectively
+"""
 def intrParam(v):
     U,S,Vh = np.linalg.svd(v) 
     s = Vh[np.argmin(S),:]
@@ -216,7 +250,12 @@ def intrParam(v):
     
     return alpha, beta, gamma, u0, v0,K
 
-    
+ """
+ Auxiliary function to calculate the extrinsic parameters of the homography estimation received as input.
+They denote the coordinate system transformations from 3D world coordinates to 3D camera coordinates
+The function returns T and R, where T is the position of the origin of the world coordinate system expressed in coordinates
+ of the camera-centered coordinate system, and R is the rotation matrix.
+ """   
 def extrParam(K, H):
     
     h0 = H[:,0]
@@ -236,6 +275,9 @@ def extrParam(K, H):
 
     return R,T
 
+"""
+Auxiliary function to calculate the RANSAC model parameters of the random data received as input. 
+"""
 def matrixM(objp,imgpoints0,imgpoints1, imgpoints2):
 
     H0= homogEstim(imgpoints0, objp)
@@ -252,6 +294,9 @@ def matrixM(objp,imgpoints0,imgpoints1, imgpoints2):
     M2 = np.matmul(matrixK, np.append(R2, T2, axis=1))
     return M0,M1,M2
 
+"""
+Auxiliary function to compute the mean square error between object points and image points.
+"""
 def mse(objp, imgp, M, nPoints):
 
     q = np.matmul(M, np.transpose(objp))
@@ -260,27 +305,20 @@ def mse(objp, imgp, M, nPoints):
     err = (q[0,:]-imgp[:,0])**2 + (q[1,:]-imgp[:,1])**2
     return np.sum(err)/nPoints
 
-def extractRansacParam(f):
-    with open("../files/"+f) as ransac:
-        line1 = ransac.find("Kmax")
-        line2 = ransac.find("d")
-        line3 = ransac.find("threshold")
-        line4 = ransac.find("K")
-        line5 = ransac.find("n")
-        Kmax = line1.split(":")[1]
-        d = line2.split(":")[1]
-        threshold = line3.split(":")[1]
-        K = line4.split(":")[1]
-        n = line5.split(":")[1]
-    return Kmax, d, threshold, K, n
 
-    
+"""
+This method computes the RANSAC algorithm on a set of data received as input. 
+First selects a random subset of data from the input dataset and computes a fitting model and the corresponding model parameters.
+Next checks which elements of the remaining data are consistent with the estimated model. In case it does not fit the model within 
+an error threshold it will be considered an outlier, and an inlier otherwise. 
+Returns the best model for each dataset and the best error.
+"""  
 def ransac(f, file0, file1, file2): 
-    Kmax = 1000
-    d= 4
-    threshold = float(0.1)
-    K = 0
-    n = 5
+    Kmax = 1000 # maximum number of iterations allowed in the algorithm
+    d= 4 # number of close data points required to assert that a model fits well to data
+    threshold = float(0.1) # threshold value to determine data points that are fit well by model 
+    K = 0   
+    n = 5  # minimum number of data points required to estimate model parameters
     p = float(0.99)
     w = 0
     objp, imgpoints0, imgpoints1, imgpoints2 = extractPoints(f, file0, file1, file2)
@@ -297,6 +335,7 @@ def ransac(f, file0, file1, file2):
         setImg0 = []*n 
         setImg1 = []*n
         setImg2 =[]*n
+        # Select values randomly from data
         for i in range(n):
             index = random.randint(0,len(imgpoints0)-1)
             setObj.append(objp[index])
@@ -307,6 +346,7 @@ def ransac(f, file0, file1, file2):
         setImg0 = np.array(setImg0)
         setImg1 = np.array(setImg1)
         setImg2 = np.array(setImg2)
+        # model parameters fitted to the random data
         M0,M1,M2 = matrixM(setObj,setImg0,setImg1,setImg2)
         objp2 = to3DH(objp) 
         q0 = np.matmul(M0, np.transpose(objp2))
@@ -321,6 +361,7 @@ def ransac(f, file0, file1, file2):
         err0 = (q0[0,:]-imgpoints0[:,0])**2 + (q0[1,:]-imgpoints0[:,1])**2
         err1 = (q1[0,:]-imgpoints1[:,0])**2 + (q1[1,:]-imgpoints1[:,1])**2
         err2 = (q2[0,:]-imgpoints2[:,0])**2 + (q2[1,:]-imgpoints2[:,1])**2
+        # For remaining points in data, add point to inlier if its error is under the threshold and update error with every iteration.
         for j in range(0,len(err0)):
             meanErr = float((err0[j]+err1[j]+err2[j])/3)
             errors.append(meanErr)
@@ -330,19 +371,19 @@ def ransac(f, file0, file1, file2):
                 np.insert(setImg0,len(setImg0)-1,imgpoints0[j])
                 np.insert(setImg1,len(setImg1)-1,imgpoints1[j])
                 np.insert(setImg2,len(setImg2)-1,imgpoints2[j])
-            
+        # Accept a model if we have reached a number of inliers large enough. Updtae parameters for further iterations. 
         if (numInliers > d):
             d = numInliers
             M0,M1,M2 = matrixM(setObj,setImg0,setImg1,setImg2)
             bestModel0 = M0
             bestModel1 = M1
             bestModel2 = M2
-            w = numInliers/len(imgpoints0)
+            w = numInliers/len(imgpoints0)  
             K = np.log(1-p)/np.log(1-(w**n))
             errors.sort()
             median = np.median(errors)
             threshold = median
-            bestErr = meanErr
+            bestErr = meanErr # Measure of how good the model is
             
     print("K: ",K)
     print("w: ", w)
@@ -352,7 +393,10 @@ def ransac(f, file0, file1, file2):
     print("BEST MODEL 2: ",bestModel2)
             
     return bestModel0, bestModel1, bestModel2 , bestErr
-        
+
+"""
+Help function, displays the user input options.
+"""     
 def help():
     print("Press 'c' for planar calibration execution.")
     print("Press 'r' for RANSAC algorithm execution.")
